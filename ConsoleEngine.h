@@ -455,10 +455,12 @@ public:
 			vecTransformedCoordinates[i].first = vecTransformedCoordinates[i].first + x;
 			vecTransformedCoordinates[i].second = vecTransformedCoordinates[i].second + y;
 		}
+
 		// Draw Closed Polygon
-		for (int i = 0; i < (verts + 1); i++) {
+		for (int i = 0; i < verts + 1; i++) {
 			int j = (i + 1);
-			DrawLine(vecTransformedCoordinates[i % verts].first, vecTransformedCoordinates[i % verts].second, vecTransformedCoordinates[j % verts].first, vecTransformedCoordinates[j % verts].second, PIXEL_SOLID, col);
+			DrawLine((int)vecTransformedCoordinates[i % verts].first, (int)vecTransformedCoordinates[i % verts].second,
+				(int)vecTransformedCoordinates[j % verts].first, (int)vecTransformedCoordinates[j % verts].second, PIXEL_SOLID, col);
 		}
 	}
 
