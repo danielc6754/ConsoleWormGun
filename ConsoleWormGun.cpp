@@ -107,7 +107,7 @@ public:
 	}
 
 	virtual void Draw(ConsoleTemplateEngine* engine, float fOffsetX, float fOffsetY) {
-		engine->DrawWireFrameModel(vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, FG_WHITE);
+		engine->DrawWireFrameModel(vecModel, px - fOffsetX, py - fOffsetY, atan2f(vy, vx), radius, FG_YELLOW);
 	}
 
 	virtual int BounceDeathAction() {
@@ -141,7 +141,7 @@ vector<pair<float, float>> DefineMissile() {
 
 vector<pair<float, float>> cMissile::vecModel = DefineMissile();
 
-class cWorm : public cPhysicsObject {
+class cWorm : public cPhysicsObject { // A unit/worm
 public:
 	cWorm(float x = 0.0f, float y = 0.0f) : cPhysicsObject(x, y) {
 		radius = 3.5f;
@@ -163,6 +163,7 @@ public:
 
 public:
 	float fShootAngle = 0.0f;
+
 private:
 	static TemplateSprite* sprWorm;
 };
@@ -182,15 +183,42 @@ private:
 
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
+	float fCameraPosXTarget = 0.0f;
+	float fCameraPosYTarget = 0.0f;
+
+	// Game States
+	enum GAME_STATE {
+		GS_RESET = 0,
+		GS_GENERATE_TERRAIN = 1,
+		GS_GENERATING_TERRAIN,
+		GS_ALLOCATE_UNITS,
+		GS_ALLOCATING_UNITS,
+		GS_START_PLAY,
+		GS_CAMERA_MODE
+	} nGameState, nNextState;
+
+	bool bGameIsStable = false;
+	bool bPlayerHasControl = false;
+	bool bPlayerActionComplete = false;
 
 	// List of things that exist in game world
 	list<unique_ptr<cPhysicsObject>> listObjects; // Since cPhysicsObject is abstract, need to treat it as a pointer
+
+	cPhysicsObject* pObjectUnderControl = nullptr; // Player can control 1 of multiple object on screen
+	cPhysicsObject* pCameraTrackingObject = nullptr; // Camera follows object
+
+	bool bEnergising = false;
+	float fEnergyLevel = 0.0f;
+	bool bFireWeapon = false;
 
 	virtual bool OnUserCreate() {
 		// Create Map
 		map = new unsigned char[nMapWidth * nMapHeight];
 		memset(map, 0, nMapWidth * nMapHeight * sizeof(unsigned char));
-		CreateMap();
+		//CreateMap();
+
+		nGameState = GS_RESET;
+		nNextState = GS_RESET;
 
 		return true;
 	}
@@ -203,10 +231,16 @@ private:
 			Boom(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY, 10.0f);
 		if (m_mouse[1].bReleased)
 			listObjects.push_back(unique_ptr<cMissile>(new cMissile(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY)));
-		if (m_mouse[2].bReleased)
-			listObjects.push_back(unique_ptr<cWorm>(new cWorm(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY)));
+		if (m_mouse[2].bReleased) {
+			cWorm* worm = new cWorm(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY);
+			pObjectUnderControl = worm;
+			pCameraTrackingObject = worm;
+			listObjects.push_back(unique_ptr<cWorm>(worm));
+		}
+			//listObjects.push_back(unique_ptr<cWorm>(new cWorm(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY)));
 			//cDummy* p = new cDummy(m_mousePosX + fCameraPosX, m_mousePosY + fCameraPosY);
 			//listObjects.push_back(unique_ptr<cDummy>(p));
+		
 		// Camera Contorl
 		// Mouse Edge Map Scroll // Issues with corner movement causing wireframe functiont to crash
 		float fMapScrollSpeed = 300.0f;
@@ -218,6 +252,144 @@ private:
 			fCameraPosY -= fMapScrollSpeed * fElapsedTime;
 		if (m_mousePosY > ScreenHeight() - 5)
 			fCameraPosY += fMapScrollSpeed * fElapsedTime;
+		// Control Supervisor
+		switch (nGameState) {
+			case GS_RESET: {
+				bPlayerHasControl = false;
+				nNextState = GS_GENERATE_TERRAIN;
+			}
+			break;
+
+			case GS_GENERATE_TERRAIN: {
+				bPlayerHasControl = false;
+				CreateMap();
+				nNextState = GS_GENERATING_TERRAIN;
+			}
+			break;
+
+			case GS_GENERATING_TERRAIN: {
+				bPlayerHasControl = false;
+				nNextState = GS_ALLOCATE_UNITS;
+			}
+			break;
+
+			case GS_ALLOCATE_UNITS: {
+				bPlayerHasControl = false;
+				cWorm* worm = new cWorm(32.0f, 1.0f);
+				listObjects.push_back(unique_ptr<cWorm>(worm));
+				pObjectUnderControl = worm;
+				pCameraTrackingObject = pObjectUnderControl;
+				nNextState = GS_ALLOCATING_UNITS;
+			}
+			break;
+
+			case GS_ALLOCATING_UNITS: {
+				bPlayerHasControl = false;
+				if (bGameIsStable) {
+					bPlayerActionComplete = false;
+					nNextState = GS_START_PLAY;
+				}
+			}
+			break;
+
+			case GS_START_PLAY: {
+				bPlayerHasControl = true;
+				if (bPlayerActionComplete) {
+					nNextState = GS_CAMERA_MODE;
+				}
+			}
+			break;
+
+			case GS_CAMERA_MODE: {
+				bPlayerHasControl = false;
+				bPlayerActionComplete = false;
+
+				if (bGameIsStable) {
+					pCameraTrackingObject = pObjectUnderControl;
+					nNextState = GS_START_PLAY;
+				}
+			}
+			break;
+		}
+
+		// Handle User Input
+		if (bPlayerHasControl) {
+			if (pObjectUnderControl != nullptr) {
+				if (pObjectUnderControl->bStable) {
+					if (m_keys[L'Z'].bPressed) {
+						float a = ((cWorm*)pObjectUnderControl)->fShootAngle;
+						pObjectUnderControl->vx = 4.0f * cosf(a);
+						pObjectUnderControl->vy = 8.0f * sinf(a);
+						pObjectUnderControl->bStable = false;
+					}
+					if (m_keys[L'A'].bHeld) {
+						cWorm* worm = (cWorm*)pObjectUnderControl;
+						worm->fShootAngle -= 1.0f * fElapsedTime;
+						if (worm->fShootAngle < -3.14159f)
+							worm->fShootAngle += 3.14159f * 2.0f;
+					}
+					if (m_keys[L'S'].bHeld) {
+						cWorm* worm = (cWorm*)pObjectUnderControl;
+						worm->fShootAngle += 1.0f * fElapsedTime;
+						if (worm->fShootAngle > 3.14159f)
+							worm->fShootAngle -= 3.14159f * 2.0f;
+					}
+					if (m_keys[VK_SPACE].bPressed) {
+						bEnergising = true;
+						bFireWeapon = false;
+						fEnergyLevel = 0.0f;
+					}
+					if (m_keys[VK_SPACE].bHeld) {
+						if (bEnergising) {
+							fEnergyLevel += 0.75f * fElapsedTime;
+							if (fEnergyLevel >= 1.0f) {
+								fEnergyLevel = 1.0f;
+								bFireWeapon = true;
+							}
+						}
+					}
+					if (m_keys[VK_SPACE].bReleased) {
+						if (bEnergising)
+							bFireWeapon = true;
+						bEnergising = false;
+					}
+				}
+
+				if (bFireWeapon) {
+					cWorm* worm = (cWorm*)pObjectUnderControl;
+
+					// Get Weapon Origin
+					float ox = worm->px;
+					float oy = worm->py;
+
+					// Get Weapon Direction
+					float dx = cosf(worm->fShootAngle);
+					float dy = sinf(worm->fShootAngle);
+
+					// Weapon Object
+					cMissile* m = new cMissile(ox, oy, dx * 40.0f * fEnergyLevel, dy * 40.0f * fEnergyLevel);
+					listObjects.push_back(unique_ptr<cMissile>(m));
+					pCameraTrackingObject = m;
+
+					bFireWeapon = false;
+					fEnergyLevel = 0.0f;
+					bEnergising = false;
+
+					bPlayerActionComplete = true;
+				}
+			}
+		}
+
+		// Set Camera Coordinates
+		if (pCameraTrackingObject != nullptr) {
+			//fCameraPosX = pCameraTrackingObject->px - ScreenWidth() / 2;
+			//fCameraPosY = pCameraTrackingObject->py - ScreenHeight() / 2;
+			fCameraPosXTarget = pCameraTrackingObject->px - ScreenWidth() / 2;
+			fCameraPosYTarget = pCameraTrackingObject->py - ScreenHeight() / 2;
+			// Slight lag time of camera
+			fCameraPosX += (fCameraPosXTarget - fCameraPosX) * 5.0f * fElapsedTime;
+			fCameraPosY += (fCameraPosYTarget - fCameraPosY) * 5.0f * fElapsedTime;
+		}
 
 		// Clamp map boundaries
 		if (fCameraPosX < 1)
@@ -304,8 +476,10 @@ private:
 							// == 0 Nothing
 							// > 0 Explosion
 							int nResponse = p->BounceDeathAction();
-							if (nResponse > 0)
+							if (nResponse > 0) {
 								Boom(p->px, p->py, nResponse);
+								pCameraTrackingObject = nullptr;
+							}
 						}
 					}
 				}
@@ -338,9 +512,42 @@ private:
 				}
 			}
 
-		for (auto& p : listObjects)
-			if (p->py < fCameraPosY + (float)ScreenHeight()) // Only draw to visibly space of ScreenBuffer
+		for (auto& p : listObjects) {
+			if (p->py < fCameraPosY + (float)ScreenHeight()) {// Only draw to visibly space of ScreenBuffer
 				p->Draw(this, fCameraPosX, fCameraPosY);
+				cWorm* worm = (cWorm*)pObjectUnderControl;
+
+				if (p.get() == worm) {
+					float cx = worm->px + 8.0f * cosf(worm->fShootAngle) - fCameraPosX;
+					float cy = worm->py + 8.0f * sinf(worm->fShootAngle) - fCameraPosY;
+
+					Draw(cx, cy, PIXEL_SOLID, FG_BLACK);
+					Draw(cx + 1, cy + 1, PIXEL_SOLID, FG_BLACK);
+					Draw(cx - 1, cy + 1, PIXEL_SOLID, FG_BLACK);
+					Draw(cx + 1, cy - 1, PIXEL_SOLID, FG_BLACK);
+					Draw(cx - 1, cy - 1, PIXEL_SOLID, FG_BLACK);
+
+					for (int i = 0; i < 11 * fEnergyLevel; i++) {
+						Draw(worm->px - 5 + i - fCameraPosX, worm->py - 12 - fCameraPosY, PIXEL_SOLID, FG_GREEN);
+						Draw(worm->px - 5 + i - fCameraPosX, worm->py - 11 - fCameraPosY, PIXEL_SOLID, FG_RED);
+					}
+				}
+			}
+		}
+
+		// Check for game state stability
+		bGameIsStable = true;
+		for (auto &p : listObjects)
+			if (!p->bStable) {
+				bGameIsStable = false;
+				break;
+			}
+
+		if (bGameIsStable)
+			Fill(2, 2, 6, 6, PIXEL_SOLID, FG_RED);
+
+		// Move to next state
+		nGameState = nNextState;
 
 		return true;
 	}
