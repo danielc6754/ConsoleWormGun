@@ -182,9 +182,8 @@ private:
 
 	float fCameraPosX = 0.0f;
 	float fCameraPosY = 0.0f;
-	float fTempCameraPosX = 0.0f;
-	float fTempCameraPosY = 0.0f;
 
+	// List of things that exist in game world
 	list<unique_ptr<cPhysicsObject>> listObjects; // Since cPhysicsObject is abstract, need to treat it as a pointer
 
 	virtual bool OnUserCreate() {
@@ -339,8 +338,9 @@ private:
 				}
 			}
 
-		for (auto& p : listObjects)	
-			p->Draw(this, fCameraPosX, fCameraPosY);
+		for (auto& p : listObjects)
+			if (p->py < fCameraPosY + (float)ScreenHeight()) // Only draw to visibly space of ScreenBuffer
+				p->Draw(this, fCameraPosX, fCameraPosY);
 
 		return true;
 	}
