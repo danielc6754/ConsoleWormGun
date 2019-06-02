@@ -67,6 +67,7 @@ http://www.youtube.com/javidx9
 //#ifndef UNICODE
 //#error Please enable UNICODE for the compiler.VS: Project Properties -> General -> \Character Set -> Use Unicode
 //#endif
+#include <windows.h>
 
 #include <iostream>
 #include <vector>
@@ -74,8 +75,6 @@ http://www.youtube.com/javidx9
 #include <thread>
 #include <atomic>
 #include <condition_variable>
-
-#include <windows.h>
 
 // Colors in Hex
 enum COLOUR {
