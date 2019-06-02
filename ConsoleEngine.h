@@ -28,8 +28,8 @@ Beginners Guide:		https://youtu.be/u5BhrA8ED0o
 Shout Outs!
 ~~~~~~~~~~~
 Thanks to cool people who helped with testing, bug-finding and fixing!
-	YouTube: 	wowLinh, JavaJack59
-Last Updated: 13/09/2017
+	YouTube: 	wowLinh, JavaJack59, idkwid
+Last Updated: 07/12/2017
 Usage:
 ~~~~~~
 This class is abstract, so you must inherit from it. Override the OnUserCreate() function
@@ -59,22 +59,32 @@ blocks - but you can draw any unicode character, using any of the colours listed
 There may be bugs!
 See my other videos for examples!
 http://www.youtube.com/javidx9
+Lots of programs to try:
+http://www.github.com/OneLoneCoder/videos
+Chat on the Discord server:
+https://discord.gg/WhwHUMV
+Be bored by Twitch:
+http://www.twitch.tv/javidx9
 */
 
 #pragma once
-#pragma comment(lib, "winmm.lib")
 
-//#ifndef UNICODE
-//#error Please enable UNICODE for the compiler.VS: Project Properties -> General -> \Character Set -> Use Unicode
-//#endif
-#include <windows.h>
+#ifndef UNICODE
+#error Please enable UNICODE for your compiler! VS: Project Properties -> General -> \
+Character Set -> Use Unicode. In Code::Blocks, include 'UNICODE' and '_UNICODE' as \
+pre-processor directives. Thanks! - Javidx9
+#endif
 
 #include <iostream>
+#include <chrono>
 #include <vector>
 #include <list>
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+using namespace std;
+
+#include <windows.h>
 
 // Colors in Hex
 enum COLOUR {
@@ -237,7 +247,6 @@ public:
 		m_keyOldState = new short[256];
 		memset(m_keyNewState, 0, 256 * sizeof(short));
 		memset(m_keyOldState, 0, 256 * sizeof(short));
-
 		memset(m_keys, 0, 256 * sizeof(sKeyState));
 
 		m_mousePosX = 0;
@@ -319,7 +328,7 @@ public:
 		m_rectWindow = { 0, 0, 1, 1 };
 		SetConsoleWindowInfo(m_hConsole, TRUE, &m_rectWindow);
 
-		// Set the size of the screen buff
+		// Set the size of the screen buffer
 		COORD coord = { (short)m_nScreenWidth, (short)m_nScreenHeight };
 		if (!SetConsoleScreenBufferSize(m_hConsole, coord))
 			return Error(L"SetConsoleScreenBufferSize");
@@ -367,7 +376,8 @@ public:
 	}
 
 	virtual void Draw(int x, int y, wchar_t c = 0x2588, short col = 0x000F) {
-		if (x >= 0 && x < m_nScreenWidth && y >= 0 && m_nScreenHeight) {
+		// 6/2/2019 Fixed mem overflow issue. Forgot to add y < m_nScreenHeight...
+		if (x >= 0 && x < m_nScreenWidth && y >= 0 && y < m_nScreenHeight) {
 			m_bufScreen[y * m_nScreenWidth + x].Char.UnicodeChar = c;
 			m_bufScreen[y * m_nScreenWidth + x].Attributes = col;
 		}
@@ -396,7 +406,7 @@ public:
 			}
 		}
 	}
-
+	// Clip buffer to prevent mem leak
 	void Clip(int& x, int& y) {
 		if (x < 0)
 			x = 0;
